@@ -1,25 +1,35 @@
 package dev.smpcristalix.worldstructures.listener;
 
 import dev.smpcristalix.worldstructures.runtime.StructureInstanceService;
-import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFadeEvent;
+import org.bukkit.event.block.BlockFertilizeEvent;
+import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockGrowEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.world.StructureGrowEvent;
+import org.bukkit.inventory.ItemStack;
 
 /**
  * Защищает физические блоки наших структур от грифа и обходных способов разрушения.
@@ -49,6 +59,20 @@ public final class StructureProtectionListener implements Listener {
             event.setCancelled(true);
             deny(event.getPlayer());
         }
+    }
+
+    /**
+     * Некоторые vanilla-преобразования блока (strip/path/till/wax/scrape) идут через interact,
+     * а не через BlockBreak/BlockPlace. Блокируем только инструменты, которые реально меняют блок,
+     * поэтому сундуки, двери, кнопки и прочие обычные взаимодействия остаются доступными.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onMutatingInteract(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || canBypass(event.getPlayer())) return;
+        Block clicked = event.getClickedBlock();
+        if (!isProtected(clicked) || !isMutatingTool(event.getItem())) return;
+        event.setCancelled(true);
+        deny(event.getPlayer());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -96,6 +120,53 @@ public final class StructureProtectionListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFade(BlockFadeEvent event) {
+        if (isProtected(event.getBlock())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onForm(BlockFormEvent event) {
+        if (isProtected(event.getBlock())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onGrow(BlockGrowEvent event) {
+        if (isProtected(event.getBlock())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFertilize(BlockFertilizeEvent event) {
+        if (canBypass(event.getPlayer())) return;
+        if (isProtected(event.getBlock())) {
+            event.setCancelled(true);
+            if (event.getPlayer() != null) deny(event.getPlayer());
+            return;
+        }
+        for (BlockState state : event.getBlocks()) {
+            if (instances.isInside(state.getLocation())) {
+                event.setCancelled(true);
+                if (event.getPlayer() != null) deny(event.getPlayer());
+                return;
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onLeavesDecay(LeavesDecayEvent event) {
+        if (isProtected(event.getBlock())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onStructureGrow(StructureGrowEvent event) {
+        for (BlockState state : event.getBlocks()) {
+            if (instances.isInside(state.getLocation())) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityExplosion(EntityExplodeEvent event) {
         event.blockList().removeIf(this::isProtected);
     }
@@ -107,8 +178,14 @@ public final class StructureProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPistonExtend(BlockPistonExtendEvent event) {
+        if (isProtected(event.getBlock())) {
+            event.setCancelled(true);
+            return;
+        }
         for (Block block : event.getBlocks()) {
-            if (isProtected(block) || isProtected(block.getRelative(event.getDirection()))) {
+            if (isProtected(block)
+                    || isProtected(block.getRelative(event.getDirection()))
+                    || isProtected(block.getRelative(event.getDirection().getOppositeFace()))) {
                 event.setCancelled(true);
                 return;
             }
@@ -117,29 +194,35 @@ public final class StructureProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPistonRetract(BlockPistonRetractEvent event) {
+        if (isProtected(event.getBlock())) {
+            event.setCancelled(true);
+            return;
+        }
         for (Block block : event.getBlocks()) {
-            if (isProtected(block) || isProtected(block.getRelative(event.getDirection()))) {
+            if (isProtected(block)
+                    || isProtected(block.getRelative(event.getDirection()))
+                    || isProtected(block.getRelative(event.getDirection().getOppositeFace()))) {
                 event.setCancelled(true);
                 return;
             }
         }
     }
 
-    private boolean isProtected(Block block) {
-        return block != null && isProtected(block.getLocation());
+    private boolean isMutatingTool(ItemStack item) {
+        if (item == null || item.getType().isAir()) return false;
+        Material type = item.getType();
+        String name = type.name();
+        return name.endsWith("_AXE")
+                || name.endsWith("_SHOVEL")
+                || name.endsWith("_HOE")
+                || type == Material.SHEARS
+                || type == Material.HONEYCOMB
+                || type == Material.BONE_MEAL
+                || type == Material.FLINT_AND_STEEL;
     }
 
-    private boolean isProtected(Location location) {
-        StructureInstanceService.InstanceView nearest = instances.nearest(location, null);
-        if (nearest == null || location.getWorld() == null) return false;
-        StructureInstanceService.BoundsData b = nearest.bounds();
-        if (!b.worldName().equals(location.getWorld().getName())) return false;
-        double x = location.getX();
-        double y = location.getY();
-        double z = location.getZ();
-        return x >= b.minX() && x <= b.maxX()
-                && y >= b.minY() && y <= b.maxY()
-                && z >= b.minZ() && z <= b.maxZ();
+    private boolean isProtected(Block block) {
+        return block != null && instances.isInside(block.getLocation());
     }
 
     private boolean canBypass(Player player) {
