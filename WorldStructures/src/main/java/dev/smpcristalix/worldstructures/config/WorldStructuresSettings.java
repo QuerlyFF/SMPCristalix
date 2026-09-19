@@ -136,10 +136,34 @@ public final class WorldStructuresSettings {
                     // Некорректная способность просто пропускается.
                 }
             }
-            if (abilities.isEmpty()) {
-                abilities.add(BossAbility.KNOCKBACK);
+            if (abilities.isEmpty()) abilities.add(BossAbility.KNOCKBACK);
+
+            List<MobSpawnSpec> mobs = readMobSpawns(config, path + ".mobs");
+            if (mobs.isEmpty()) mobs = List.of(new MobSpawnSpec(type, 4, 7));
+
+            result.put(key.toLowerCase(), new StructureBossSpec(type, List.copyOf(abilities), List.copyOf(mobs)));
+        }
+        return result;
+    }
+
+    private static List<MobSpawnSpec> readMobSpawns(FileConfiguration config, String path) {
+        ConfigurationSection section = config.getConfigurationSection(path);
+        if (section == null) return List.of();
+
+        List<MobSpawnSpec> result = new ArrayList<>();
+        for (String key : section.getKeys(false)) {
+            EntityType type;
+            try {
+                type = EntityType.valueOf(key.toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+                continue;
             }
-            result.put(key.toLowerCase(), new StructureBossSpec(type, List.copyOf(abilities)));
+
+            List<Integer> range = config.getIntegerList(path + "." + key);
+            if (range.size() < 2) continue;
+            int min = Math.max(0, Math.min(range.get(0), range.get(1)));
+            int max = Math.max(min, Math.max(range.get(0), range.get(1)));
+            if (max > 0) result.add(new MobSpawnSpec(type, min, max));
         }
         return result;
     }
@@ -196,6 +220,6 @@ public final class WorldStructuresSettings {
                            int debuffDurationMinTicks, int debuffDurationMaxTicks) {}
 
     public record ChestSpec(double coinChance, int amountMin, int amountMax) {}
-
-    public record StructureBossSpec(EntityType bossType, List<BossAbility> abilities) {}
+    public record MobSpawnSpec(EntityType type, int minCount, int maxCount) {}
+    public record StructureBossSpec(EntityType bossType, List<BossAbility> abilities, List<MobSpawnSpec> mobs) {}
 }
