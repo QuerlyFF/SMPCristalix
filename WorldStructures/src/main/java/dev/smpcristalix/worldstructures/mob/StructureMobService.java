@@ -100,6 +100,10 @@ public final class StructureMobService {
         return entity.getPersistentDataContainer().has(miniBossKey, PersistentDataType.BYTE);
     }
 
+    public boolean isSummonedMob(LivingEntity entity) {
+        return entity.getPersistentDataContainer().has(summonedByBossKey, PersistentDataType.STRING);
+    }
+
     public String structureId(LivingEntity entity) {
         return entity.getPersistentDataContainer().get(structureIdKey, PersistentDataType.STRING);
     }
