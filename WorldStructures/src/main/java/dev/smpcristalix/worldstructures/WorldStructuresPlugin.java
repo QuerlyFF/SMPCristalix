@@ -6,6 +6,7 @@ import dev.smpcristalix.worldstructures.listener.StructureCombatListener;
 import dev.smpcristalix.worldstructures.loot.StructureChestService;
 import dev.smpcristalix.worldstructures.mob.StructureMobService;
 import dev.smpcristalix.worldstructures.reward.RewardService;
+import dev.smpcristalix.worldstructures.structure.StructurePlacementService;
 import org.bukkit.block.Block;
 import org.bukkit.block.Container;
 import org.bukkit.command.CommandSender;
@@ -24,6 +25,7 @@ public final class WorldStructuresPlugin extends JavaPlugin {
     private RewardService rewardService;
     private MiniBossService miniBossService;
     private StructureChestService chestService;
+    private StructurePlacementService placementService;
 
     @Override
     public void onEnable() {
@@ -34,6 +36,8 @@ public final class WorldStructuresPlugin extends JavaPlugin {
         rewardService = new RewardService(this, settings);
         miniBossService = new MiniBossService(this, settings, mobService);
         chestService = new StructureChestService(this, settings, rewardService);
+        placementService = new StructurePlacementService(this, settings, mobService, miniBossService, chestService);
+        placementService.loadTemplates();
 
         getServer().getPluginManager().registerEvents(
                 new StructureCombatListener(mobService, rewardService, miniBossService), this
@@ -42,7 +46,7 @@ public final class WorldStructuresPlugin extends JavaPlugin {
         miniBossService.start();
         registerCommand();
 
-        getLogger().info("WorldStructures включён. Структур: " + settings.structures().size());
+        getLogger().info("WorldStructures включён. NBT шаблонов: " + placementService.loadedTemplateCount());
     }
 
     @Override
@@ -56,7 +60,6 @@ public final class WorldStructuresPlugin extends JavaPlugin {
             getLogger().severe("Команда worldstructures отсутствует в plugin.yml");
             return;
         }
-
         command.setExecutor((sender, ignoredCommand, ignoredLabel, args) -> executeCommand(sender, args));
     }
 
@@ -64,6 +67,7 @@ public final class WorldStructuresPlugin extends JavaPlugin {
         if (args.length == 0 || args[0].equalsIgnoreCase("status")) {
             sender.sendMessage("§6WorldStructures §7— §f" + (settings.enabled() ? "включён" : "выключен"));
             sender.sendMessage("§7Конфигов структур: §f" + settings.structures().size());
+            sender.sendMessage("§7Загружено NBT: §f" + placementService.loadedTemplateCount());
             sender.sendMessage("§7Якорей мини-боссов: §f" + miniBossService.anchorCount());
             sender.sendMessage("§7Живых мини-боссов: §f" + miniBossService.aliveBossCount());
             sender.sendMessage("§7Респавн босса: §f" + (settings.boss().respawnTicks() / 20 / 60) + " мин");
@@ -78,12 +82,33 @@ public final class WorldStructuresPlugin extends JavaPlugin {
             rewardService.reload(settings);
             miniBossService.reload(settings);
             chestService.reload(settings);
+            placementService.reload(settings);
             sender.sendMessage("§aWorldStructures перезагружен.");
             return true;
         }
 
         if (!(sender instanceof Player player)) {
             sender.sendMessage("§cЭта команда доступна только игроку.");
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("place")) {
+            if (args.length < 2) {
+                player.sendMessage("§cИспользование: /ws place <structureId>");
+                return true;
+            }
+            String structureId = args[1].toLowerCase();
+            try {
+                StructurePlacementService.PlacementResult result = placementService.place(structureId, player.getLocation());
+                player.sendMessage("§aСтруктура §f" + result.structureId() + " §aпоставлена.");
+                player.sendMessage("§7Поворот: §f" + result.rotation()
+                        + " §7| Размер: §f" + result.sizeX() + "x" + result.sizeY() + "x" + result.sizeZ());
+                player.sendMessage("§7Охрана: §f" + result.mobsSpawned()
+                        + " §7| Контейнеры: §f" + result.containersMarked());
+                player.sendMessage("§7Boss anchor: §f" + result.bossAnchorId());
+            } catch (IllegalArgumentException | IllegalStateException exception) {
+                player.sendMessage("§c" + exception.getMessage());
+            }
             return true;
         }
 
@@ -133,7 +158,7 @@ public final class WorldStructuresPlugin extends JavaPlugin {
             return true;
         }
 
-        player.sendMessage("§cИспользование: /ws <status|reload|mark|mob|markchest>");
+        player.sendMessage("§cИспользование: /ws <status|reload|place|mark|mob|markchest>");
         return true;
     }
 
