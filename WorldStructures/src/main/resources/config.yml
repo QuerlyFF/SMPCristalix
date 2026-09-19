@@ -36,6 +36,9 @@ gear:
   protection-elite-min: 3
   protection-elite-max: 4
 
+  # Шмот нужен для сложности, а не как основной источник алмазок.
+  drop-chance: 0.01
+
 miniboss:
   health-multiplier: 5.0
   damage-multiplier: 3.0
