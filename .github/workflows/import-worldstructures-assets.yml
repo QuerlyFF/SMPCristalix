@@ -40,6 +40,12 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Java/config commits may have landed while this job was downloading the source pack.
+          # Rebase before staging binaries so the asset commit always stays on the current branch head.
+          git fetch origin feature/worldstructures-elite-bosses
+          git rebase origin/feature/worldstructures-elite-bosses
+
           git add WorldStructures/src/main/resources/structures/*.nbt
           if git diff --cached --quiet; then
             echo "NBT templates already present"
